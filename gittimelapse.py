@@ -11,45 +11,104 @@ try:
 except ImportError as e:
     print "You need to install selenium and git. e.g. pip install selenium; pip install git."
     print e
-    sys.exit()
+    sys.exit(2)
 
-class MyBrowser:
-    def __init__(self, chrome=False):
-        if chrome:
-            self.browser = webdriver.Chrome()
-        else:
-            self.browser = webdriver.Firefox()
-
-    def take_screenshot(self,filename,url,w=1024,h=768):
-        self.browser.get(url)
-        self.browser.set_window_size(w,h)
-        return self.browser.save_screenshot(filename)
-
-    def close(self):
-        self.browser.close()
-
-def usage():
-    print "usage: run.py -r project_folder -u url"
-
-def quit(head=None,browser=None):
+def clean_up(head=None):
     print "Cleaning up..."
 
     if head:
         print "Restoring original head (%s)" % head
         head.checkout()
-    if browser:
-        print "Closing browser..."
-        browser.close()
 
-    sys.exit()
+def get_repo(repodir):
+    try:
+        return Repo(repodir)
+    except NoSuchPathError:
+        print "Repo dir does not exist."
+        raise
+    except InvalidGitRepositoryError:
+        print "Invalid git repo."
+        raise
 
+def get_head(repo):
+    # Saving current branch for later
+    try:
+        return repo.head.reference
+    except TypeError:
+        print "Check your current branch."
+        raise
+        
+def get_commits(repo,max_commits):
+    try:
+        # Getting the list of commits for the current branch
+        if max_commits:
+            commits = repo.iter_commits(max_count=max_commits)
+        else:
+            commits = repo.iter_commits()
+
+        # Converting iterator to a list to reverse the chronological order
+        commits = list(commits)
+        commits.reverse()
+        
+        return commits
+    except Exception, e:
+        print "Error getting commits."
+        raise
+
+def get_webdriver(chrome):
+    if not chrome:
+        return webdriver.Firefox()
+    else:
+        return webdriver.Chrome()
+        
+def take_screenshot(webdriver,filename,url,w=1024,h=768):
+    webdriver.get(url)
+    webdriver.set_window_size(w,h)
+    webdriver.save_screenshot(filename)
+                
+def take_screenshots(repo,commits,imagedir,url,chrome):
+    # Git command will be used to checkout commits
+    git = repo.git
+    webdriver = get_webdriver(chrome)
+    i=1 # Counter for image file names
+    
+    for commit in commits:
+        git.checkout(commit)
+        pngname = os.path.join(imagedir,str(i) + ".png")
+    
+        try:
+            take_screenshot(webdriver,pngname,url)
+        except Exception, e:
+            print "Problem occurred while taking screenshot."
+            raise
+    
+        i += 1
+
+    webdriver.close()
+
+def usage():
+    print """usage: gittimelapse.py [options] project_folder url
+Options:
+    -h, --help
+        Show this help.
+    --max-commits=<number>
+        Limits the number of commits starting from the most recent.
+    --images-dir=<path> # this doesn't work yet
+        Default is the relative path "./files"
+    -c, --chrome 
+        Default webdriver is Firefox. Chrome needs its executable in the PATH.
+        It can be downloaded here: http://code.google.com/p/chromedriver/downloads/list
+"""
+           
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hr:u:c", ["help", "repo=","url=","max-commits=","images-dir=","chrome"])
+        opts, args = getopt.getopt(sys.argv[1:], "hc", [
+            "help", "max-commits=","images-dir=","chrome"])
     except getopt.GetoptError, err:
         usage()
-        quit()
+        sys.exit(2)
 
+    # Default vars
     url = None
     repodir = None
     max_commits = None
@@ -59,11 +118,7 @@ def main():
     for o, a  in opts:
         if o in ("-h", "--help"):
             usage()
-            quit()
-        elif o in ("-r", "--repo"):
-            repodir = a
-        elif o in ("-u", "--url"):
-            url = a
+            sys.exit()
         elif o in ("-m", "--max-commits"):
             max_commits = a
         elif o in ("--images-dir"):
@@ -71,59 +126,28 @@ def main():
         elif o in ("-c","--chrome"):
             chrome = True
 
-    # Mandatory parameters
-    if not url or not repodir:
+    if len(args) < 2:
         usage()
-        quit()
+        sys.exit(2)
 
-    try:
-        # Getting the repo
-        repo = Repo(repodir)
-    except NoSuchPathError:
-        print "Repo dir does not exist: %s" % repodir
-        quit()
-    except InvalidGitRepositoryError:
-        print "Invalid git repo: %s" % repodir
-        quit()
+    repodir = args[0]
+    url = args[1]
+    head = None
     
-    # Git will be used to checkout commits
-    git = repo.git
-
-    # Saving current branch for later
     try:
-        current_head = repo.head.reference
-    except TypeError as t:
-        print "Check your current branch: %s" % t
-        quit()
-
-    # Getting the list of commits for the current branch
-    if max_commits:
-        commits = repo.iter_commits(max_count=max_commits)
-    else:
-        commits = repo.iter_commits()
-
-    # Converting iterator to a list to reverse the chronological order
-    commits = list(commits)
-    commits.reverse()
-
-    b = MyBrowser(chrome)
-
-    # Counter for image file names
-    i=1
-
-    for commit in commits:
-        git.checkout(commit)
-        pngname = os.path.join(imagedir,str(i) + ".png")
-
-        try:
-            b.take_screenshot(pngname,url)
-        except WebDriverException as e:
-            print "Problem occurred while taking screenshot: %s" % e
-            quit(current_head,b)
-
-        i += 1
-
-    quit(current_head,b)
-
+        print "Getting Repo"
+        repo = get_repo(repodir)
+        print "Getting Head"
+        head = get_head(repo)
+        print "Getting Commits"
+        commits = get_commits(repo,max_commits)
+        print "Taking Screenshots"
+        take_screenshots(repo,commits,imagedir,url,chrome)
+    except Exception, e:
+        print e
+        sys.exit()
+    finally:
+        clean_up(head)
+    
 if __name__ == '__main__':
     main()
