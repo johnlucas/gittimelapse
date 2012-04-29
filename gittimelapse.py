@@ -9,16 +9,20 @@ try:
     from selenium.common.exceptions import WebDriverException
     from git import *
 except ImportError as e:
-    print "You need to install selenium and git. e.g. pip install selenium; pip install git."
+    print "You need to install selenium and git. e.g. pip install selenium; pip install gitpython."
     print e
     sys.exit(2)
 
-def clean_up(head=None):
+def clean_up(head=None,webdriver=None):
     print "Cleaning up..."
 
     if head:
         print "Restoring original head (%s)" % head
         head.checkout()
+        
+    if webdriver:
+        print "Closing browser"
+        webdriver.close()
 
 def get_repo(repodir):
     try:
@@ -64,12 +68,11 @@ def get_webdriver(chrome):
 def take_screenshot(webdriver,filename,url,w=1024,h=768):
     webdriver.get(url)
     webdriver.set_window_size(w,h)
-    webdriver.save_screenshot(filename)
+    return webdriver.save_screenshot(filename)
                 
-def take_screenshots(repo,commits,imagedir,url,chrome):
+def take_screenshots(webdriver,repo,commits,imagedir,url,chrome):
     # Git command will be used to checkout commits
     git = repo.git
-    webdriver = get_webdriver(chrome)
     i=1 # Counter for image file names
     
     for commit in commits:
@@ -77,14 +80,15 @@ def take_screenshots(repo,commits,imagedir,url,chrome):
         pngname = os.path.join(imagedir,str(i) + ".png")
     
         try:
-            take_screenshot(webdriver,pngname,url)
+            if not take_screenshot(webdriver,pngname,url):
+                raise Exception("Could not save image %s" %pngname)
         except Exception, e:
             print "Problem occurred while taking screenshot."
             raise
     
         i += 1
 
-    webdriver.close()
+    
 
 def usage():
     print """usage: gittimelapse.py [options] project_folder url
@@ -133,6 +137,7 @@ def main():
     repodir = args[0]
     url = args[1]
     head = None
+    webdriver = None
     
     try:
         print "Getting Repo"
@@ -141,13 +146,14 @@ def main():
         head = get_head(repo)
         print "Getting Commits"
         commits = get_commits(repo,max_commits)
+        webdriver = get_webdriver(chrome)
         print "Taking Screenshots"
-        take_screenshots(repo,commits,imagedir,url,chrome)
+        take_screenshots(webdriver,repo,commits,imagedir,url,chrome)
     except Exception, e:
         print e
         sys.exit()
     finally:
-        clean_up(head)
+        clean_up(head,webdriver)
     
 if __name__ == '__main__':
     main()
