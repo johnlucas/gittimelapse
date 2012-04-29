@@ -8,6 +8,7 @@ The ultimate idea is to create a video out of all the screenshots gittimelapse.p
 Install Requirements
 --------------------
 gittimelapse.py requires selenium and pythongit. You can install them using pip:
+
     pip install selenium
     pip install gitpython
 
@@ -18,6 +19,9 @@ gittimelapse.py takes two mandatory arguments:
 - the url of the web page within the git project
 
 Just make sure you run the webserver for your git repo and then run:
+
     gittimelapse.py [options] project_folder url
+    
 For example:
+
     python gittimelapse.py /Users/johnlucas/Dropbox/Coding/mvpeers/ http://localhost:3000
